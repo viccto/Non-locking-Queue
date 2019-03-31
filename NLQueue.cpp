@@ -41,6 +41,8 @@ public:
 		{
 			p = tail;
 		}
+		// 1. 正常运行的情况下, A线程的两次CAS操作之间不可能有B线程通过第一个CAS操作, 原因是tail指针仍未更新，因此p->next一定不为NULL;
+		// 2. 而若A线程在两次CAS操作之间意外退出, 则将会导致死锁, 其他线程将一直等待tail的更新. 改进方法见enQueue_new().
 		CAS(&tail, p, cur);
 		update(&enqueueTimes, 1);
 		update(&size, 1);
@@ -59,6 +61,9 @@ public:
 				p = p->next;
 			
 		}while(CAS(&p->next, NULL, cur) != true);
+		// 1. 每次操作时均使p指针指向队列尾部元素, 因此第一个CAS操作一定会成功;
+		// 2. 当多个线程同时执行第二次CAS操作时, 有的线程会成功, 有的线程会失败; 因此tail指向的元素并不一定是最新的尾部元素; 
+		// 3. 但这种“错误”可容忍的, 并且tail在后续的操作过程中，总会有一次被更新为正确状态;
 		
 		CAS(&tail, old_tail, cur);
 		update(&enqueueTimes, 1);
@@ -74,6 +79,8 @@ public:
 			return EFAULT;
 		}
 		while(__sync_bool_compare_and_swap(&head, p, p->next) != true);
+		// 1. 为避免队列为空时, head和tail指向同一个元素, 因此令head始终指向一个dummy节点, 队列的首个有效节点为head->next;
+		// 2. 而tail始终指向队列中的首个元素, 队列为空时则为NULL;
 		data_t result = p->next->val;
 		delete(p);
 		update(&dequeueTimes, 1);
